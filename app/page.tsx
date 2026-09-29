@@ -67,19 +67,10 @@ interface ProfileData {
   theme: CustomTheme;
 }
 
-const DEFAULT_THEME: CustomTheme = {
-  pageBg: "#f8fafc",
-  headerBg: "#ffffff",
-  cardBg: "#ffffff",
-  textColor: "#0f172a",
-  primaryColor: "#f97316",
-  buttonBg: "#f97316",
-  buttonText: "#ffffff",
-};
-
-const PRESET_THEMES = [
-  { name: "🍊 Shopee Orange (Default)", theme: { pageBg: "#fff7ed", headerBg: "#ffffff", cardBg: "#ffffff", textColor: "#1f2937", primaryColor: "#ea580c", buttonBg: "#f97316", buttonText: "#ffffff" } },
-  { name: "🇮🇩 Edisi 17 Agustus (Merah Putih)", theme: { pageBg: "#fef2f2", headerBg: "#b91c1c", cardBg: "#ffffff", textColor: "#18181b", primaryColor: "#dc2626", buttonBg: "#b91c1c", buttonText: "#ffffff" } },
+// 6 PILIHAN TEMA LENGKAP
+const PRESET_THEMES: { name: string; theme: CustomTheme }[] = [
+  { name: "🇮🇩 Edisi Merah Putih (Pilihan Utama)", theme: { pageBg: "#fef2f2", headerBg: "#b91c1c", cardBg: "#ffffff", textColor: "#18181b", primaryColor: "#dc2626", buttonBg: "#b91c1c", buttonText: "#ffffff" } },
+  { name: "🍊 Shopee Orange", theme: { pageBg: "#fff7ed", headerBg: "#ffffff", cardBg: "#ffffff", textColor: "#1f2937", primaryColor: "#ea580c", buttonBg: "#f97316", buttonText: "#ffffff" } },
   { name: "🌙 Edisi Ramadan / Lebaran (Emerald)", theme: { pageBg: "#f0fdf4", headerBg: "#064e3b", cardBg: "#ffffff", textColor: "#022c22", primaryColor: "#059669", buttonBg: "#047857", buttonText: "#ffffff" } },
   { name: "🎄 Edisi Natal & Tahun Baru (Ruby)", theme: { pageBg: "#fff1f2", headerBg: "#881337", cardBg: "#ffffff", textColor: "#4c0519", primaryColor: "#e11d48", buttonBg: "#be123c", buttonText: "#ffffff" } },
   { name: "📸 Instagram Clean", theme: { pageBg: "#ffffff", headerBg: "#ffffff", cardBg: "#f8fafc", textColor: "#0f172a", primaryColor: "#4f46e5", buttonBg: "#4f46e5", buttonText: "#ffffff" } },
@@ -102,7 +93,7 @@ const DEFAULT_PROFILE: ProfileData = {
   profileImage: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=400&q=80",
   catalogTitle: "Katalog Lengkap Rekomendasi Shopee Affiliate",
   hangoutSectionTitle: "📍 Tempat Nongkrong",
-  theme: DEFAULT_THEME,
+  theme: PRESET_THEMES[0].theme, // Default Merah Putih
 };
 
 const DEFAULT_PRODUCTS: ProductItem[] = [
@@ -159,52 +150,6 @@ const DEFAULT_REQUESTS: RequestItem[] = [
   { id: "q2", name: "Dina", message: "Rekomendasi dimsum frozen yang enak dong min.", date: "1 jam lalu" }
 ];
 
-const isColorDark = (hexColor: string) => {
-  if (!hexColor || !hexColor.startsWith("#")) return false;
-  const hex = hexColor.replace("#", "");
-  const r = parseInt(hex.substr(0, 2), 16) || 0;
-  const g = parseInt(hex.substr(2, 2), 16) || 0;
-  const b = parseInt(hex.substr(4, 2), 16) || 0;
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq < 128;
-};
-
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open("JajanAppUnlimitedDB", 1);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains("store")) {
-        db.createObjectStore("store");
-      }
-    };
-  });
-};
-
-const saveToDB = async (key: string, value: any) => {
-  const db = await openDB();
-  return new Promise<void>((resolve, reject) => {
-    const transaction = db.transaction("store", "readwrite");
-    const store = transaction.objectStore("store");
-    const request = store.put(value, key);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const getFromDB = async (key: string): Promise<any> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction("store", "readonly");
-    const store = transaction.objectStore("store");
-    const request = store.get(key);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
 const fileToDataURL = (file: File): Promise<string> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -217,7 +162,7 @@ export default function JajanCompactLayout() {
   const [profile, setProfile] = useState<ProfileData>(DEFAULT_PROFILE);
   const [products, setProducts] = useState<ProductItem[]>(DEFAULT_PRODUCTS);
   const [hangouts] = useState<HangoutSpot[]>(DEFAULT_HANGOUTS);
-  const [reviews, setReviews] = useState<ReviewItem[]>(NATURAL_REVIEWS);
+  const [reviews] = useState<ReviewItem[]>(NATURAL_REVIEWS);
   const [requests, setRequests] = useState<RequestItem[]>(DEFAULT_REQUESTS);
   
   const [isAdminOpen, setIsAdminOpen] = useState(false);
@@ -242,28 +187,25 @@ export default function JajanCompactLayout() {
   });
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
+  // Load data dari localStorage dengan aman
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const savedProfile = await getFromDB("profile");
-        const savedProducts = await getFromDB("products");
-        const savedReviews = await getFromDB("reviews");
-        const savedRequests = await getFromDB("requests");
+    try {
+      const savedProfile = localStorage.getItem("jajan_profile_v2");
+      const savedProducts = localStorage.getItem("jajan_products_v2");
+      const savedReviews = localStorage.getItem("jajan_reviews_v2");
+      const savedRequests = localStorage.getItem("jajan_requests_v2");
 
-        if (savedProfile) {
-          setProfile(savedProfile);
-          setEditProfile(savedProfile);
-        }
-        if (savedProducts && Array.isArray(savedProducts) && savedProducts.length > 0) {
-          setProducts(savedProducts);
-        }
-        if (savedReviews && Array.isArray(savedReviews)) setReviews(savedReviews);
-        if (savedRequests && Array.isArray(savedRequests)) setRequests(savedRequests);
-      } catch (err) {
-        console.error("Gagal memuat IndexedDB", err);
+      if (savedProfile) {
+        const parsed = JSON.parse(savedProfile);
+        setProfile(parsed);
+        setEditProfile(parsed);
       }
-    };
-    loadData();
+      if (savedProducts) setProducts(JSON.parse(savedProducts));
+      if (savedReviews) setReviews(JSON.parse(savedReviews));
+      if (savedRequests) setRequests(JSON.parse(savedRequests));
+    } catch (e) {
+      console.error("Gagal load storage", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -284,22 +226,22 @@ export default function JajanCompactLayout() {
     }
   };
 
-  const saveProfileAndThemeChanges = async () => {
+  const saveProfileAndThemeChanges = () => {
     setProfile(editProfile);
     try {
-      await saveToDB("profile", editProfile);
-      alert("Profil, Statistik & Tema Berhasil Disimpan!");
+      localStorage.setItem("jajan_profile_v2", JSON.stringify(editProfile));
+      alert("Profil & Tema Berhasil Disimpan Permanen!");
     } catch {
-      alert("Gagal menyimpan perubahan!");
+      alert("Gagal menyimpan ke storage!");
     }
   };
 
-  const applyPresetTheme = async (theme: CustomTheme) => {
+  const applyPresetTheme = (theme: CustomTheme) => {
     const updated = { ...editProfile, theme };
     setEditProfile(updated);
     setProfile(updated);
     try {
-      await saveToDB("profile", updated);
+      localStorage.setItem("jajan_profile_v2", JSON.stringify(updated));
     } catch {
       // ignore
     }
@@ -313,7 +255,7 @@ export default function JajanCompactLayout() {
     }
   };
 
-  const handleSendRequest = async (e: React.FormEvent) => {
+  const handleSendRequest = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reqMessage.trim()) return;
     const newItem: RequestItem = {
@@ -325,10 +267,8 @@ export default function JajanCompactLayout() {
     const updated = [newItem, ...requests];
     setRequests(updated);
     try {
-      await saveToDB("requests", updated);
-    } catch {
-      // ignore
-    }
+      localStorage.setItem("jajan_requests_v2", JSON.stringify(updated));
+    } catch {}
     setReqName("");
     setReqMessage("");
     alert("Request berhasil terkirim!");
@@ -341,7 +281,6 @@ export default function JajanCompactLayout() {
       Array.from(files).forEach((file) => {
         urlPromises.push(fileToDataURL(file));
       });
-
       const uploadedImages = await Promise.all(urlPromises);
       setNewProduct(prev => ({
         ...prev,
@@ -357,7 +296,7 @@ export default function JajanCompactLayout() {
     }));
   };
 
-  const handleAddOrUpdateProduct = async (e: React.FormEvent) => {
+  const handleAddOrUpdateProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProduct.title || !newProduct.affiliateUrl) {
       alert("Judul dan Link Affiliate wajib diisi!");
@@ -371,50 +310,41 @@ export default function JajanCompactLayout() {
     let updatedProducts;
     if (editingProductId) {
       updatedProducts = products.map(p => p.id === editingProductId ? { ...p, ...newProduct } : p);
+      setEditingProductId(null);
     } else {
       const item: ProductItem = { id: Date.now().toString(), ...newProduct };
       updatedProducts = [item, ...products];
     }
 
+    setProducts(updatedProducts);
     try {
-      await saveToDB("products", updatedProducts);
-      setProducts(updatedProducts);
-      setEditingProductId(null);
-      setNewProduct({
-        title: "",
-        description: "",
-        price: "",
-        originalPrice: "",
-        images: [],
-        affiliateUrl: "",
-        category: "Kuliner",
-      });
-      alert("Produk & galeri foto berhasil disimpan!");
-    } catch (err) {
-      alert("Gagal menyimpan produk ke database.");
-      console.error(err);
-    }
+      localStorage.setItem("jajan_products_v2", JSON.stringify(updatedProducts));
+    } catch {}
+
+    setNewProduct({
+      title: "",
+      description: "",
+      price: "",
+      originalPrice: "",
+      images: [],
+      affiliateUrl: "",
+      category: "Kuliner",
+    });
+    alert("Produk berhasil disimpan!");
   };
 
-  const deleteProduct = async (id: string) => {
+  const deleteProduct = (id: string) => {
     if (confirm("Hapus produk ini?")) {
       const updated = products.filter(p => p.id !== id);
       setProducts(updated);
       try {
-        await saveToDB("products", updated);
-      } catch {
-        // ignore
-      }
+        localStorage.setItem("jajan_products_v2", JSON.stringify(updated));
+      } catch {}
     }
   };
 
   const categories = ["Semua", ...Array.from(new Set(products.map(p => p.category)))];
   const filteredProducts = selectedCategory === "Semua" ? products : products.filter(p => p.category === selectedCategory);
-
-  const isHeaderDark = isColorDark(profile.theme.headerBg);
-  const headerTextColor = isHeaderDark ? "#ffffff" : profile.theme.textColor;
-  const headerBioBg = isHeaderDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.04)";
-  const headerBioBorder = isHeaderDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.06)";
 
   return (
     <div className="min-h-screen w-full font-sans pb-24 transition-colors duration-300" style={{ backgroundColor: profile.theme.pageBg, color: profile.theme.textColor }}>
@@ -445,7 +375,7 @@ export default function JajanCompactLayout() {
           </div>
         </div>
 
-        <div className="w-full px-4 sm:px-12 py-6 flex flex-col md:flex-row items-center justify-between gap-6 border-b border-slate-200/40 mt-2" style={{ color: headerTextColor }}>
+        <div className="w-full px-4 sm:px-12 py-6 flex flex-col md:flex-row items-center justify-between gap-6 border-b border-white/20 mt-2 text-white">
           <div className="flex items-center space-x-4">
             <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-4 border-white shadow-xl shrink-0 bg-slate-200">
               <img src={profile.profileImage} alt="Profile" className="w-full h-full object-cover" />
@@ -453,10 +383,10 @@ export default function JajanCompactLayout() {
             <div className="space-y-1">
               <h1 className="text-xl sm:text-2xl font-black flex items-center space-x-2 drop-shadow-sm">
                 <span>{profile.name}</span>
-                <Check className="w-5 h-5 text-blue-500 fill-blue-500" />
+                <Check className="w-5 h-5 text-blue-400 fill-blue-400" />
               </h1>
               <p className="text-xs opacity-90 font-bold drop-shadow-sm">{profile.handle}</p>
-              <div className="flex items-center space-x-4 pt-0.5 text-xs font-semibold" style={{ color: headerTextColor }}>
+              <div className="flex items-center space-x-4 pt-0.5 text-xs font-semibold text-white">
                 <span>👥 <b>{profile.followersCount}</b> Pengikut</span>
                 <span>👤 <b>{profile.followingCount}</b> Mengikuti</span>
                 <span>🛍 <b>{products.length}</b> Produk</span>
@@ -464,10 +394,7 @@ export default function JajanCompactLayout() {
             </div>
           </div>
 
-          <div 
-            className="w-full md:w-1/2 p-4 rounded-2xl text-xs whitespace-pre-line leading-relaxed font-medium shadow-inner border"
-            style={{ backgroundColor: headerBioBg, borderColor: headerBioBorder, color: headerTextColor }}
-          >
+          <div className="w-full md:w-1/2 p-4 rounded-2xl text-xs whitespace-pre-line leading-relaxed font-medium shadow-inner border bg-black/15 border-white/20 text-white">
             {profile.bio}
           </div>
         </div>
@@ -554,7 +481,7 @@ export default function JajanCompactLayout() {
                   <div className="space-y-1">
                     <h4 className="font-bold text-xs line-clamp-1">{spot.name}</h4>
                     <p className="text-[10px] opacity-90 flex items-center space-x-1 font-semibold">
-                      <MapPin className="w-3 h-3 text-orange-500 shrink-0" />
+                      <MapPin className="w-3 h-3 text-red-500 shrink-0" />
                       <span className="line-clamp-1">{spot.location}</span>
                     </p>
                     <p className="text-[10px] opacity-80 line-clamp-2">{spot.description}</p>
@@ -600,7 +527,7 @@ export default function JajanCompactLayout() {
 
           <div style={{ backgroundColor: profile.theme.cardBg, color: profile.theme.textColor }} className="p-4 sm:p-5 rounded-2xl border border-slate-200/50 shadow-sm space-y-4">
             <div className="flex items-center space-x-2 border-b pb-3 border-slate-200/40">
-              <MessageSquare className="w-4 h-4 text-orange-500" />
+              <MessageSquare className="w-4 h-4 text-red-600" />
               <h3 className="font-bold text-xs sm:text-sm">Request Rekomendasi Jajanan Baru</h3>
             </div>
             
@@ -619,7 +546,7 @@ export default function JajanCompactLayout() {
               <h4 className="font-bold text-[10px] opacity-80 uppercase tracking-wider">Request Terbaru:</h4>
               {requests.map((req) => (
                 <div key={req.id} className="p-2.5 rounded-xl bg-slate-500/5 text-[11px] space-y-0.5 border border-slate-200/30">
-                  <div className="flex justify-between font-bold text-orange-600">
+                  <div className="flex justify-between font-bold text-red-600">
                     <span>{req.name}</span>
                     <span className="text-[9px] opacity-60 font-normal">{req.date}</span>
                   </div>
@@ -676,7 +603,7 @@ export default function JajanCompactLayout() {
                   <button 
                     key={imgIdx} 
                     onClick={() => setModalImageIndex(imgIdx)}
-                    className={`w-12 h-12 rounded-lg overflow-hidden shrink-0 border-2 transition-all ${modalImageIndex === imgIdx ? "border-orange-600 scale-105" : "border-transparent opacity-60"}`}
+                    className={`w-12 h-12 rounded-lg overflow-hidden shrink-0 border-2 transition-all ${modalImageIndex === imgIdx ? "border-red-600 scale-105" : "border-transparent opacity-60"}`}
                   >
                     <img src={imgUrl} alt="" className="w-full h-full object-cover" />
                   </button>
@@ -685,7 +612,7 @@ export default function JajanCompactLayout() {
             )}
 
             <div className="p-5 space-y-3 flex-1 overflow-y-auto text-xs">
-              <span className="bg-orange-100 text-orange-700 font-bold text-[10px] px-2.5 py-0.5 rounded-full">{activeProductModal.category}</span>
+              <span className="bg-red-100 text-red-700 font-bold text-[10px] px-2.5 py-0.5 rounded-full">{activeProductModal.category}</span>
               <h3 className="text-lg font-black">{activeProductModal.title}</h3>
               
               <div className="space-y-1">
@@ -694,7 +621,7 @@ export default function JajanCompactLayout() {
               </div>
 
               <div className="flex items-baseline gap-2 pt-1">
-                <span className="text-xl font-black text-orange-600">{activeProductModal.price}</span>
+                <span className="text-xl font-black text-red-600">{activeProductModal.price}</span>
                 {activeProductModal.originalPrice && <span className="text-xs opacity-40 line-through">{activeProductModal.originalPrice}</span>}
               </div>
               
@@ -717,10 +644,11 @@ export default function JajanCompactLayout() {
             
             <div className="p-5 overflow-y-auto space-y-5 flex-1 text-xs">
               
-              <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-4">
+              {/* Bagian Pilihan Tema (LENGKAP) */}
+              <div className="bg-orange-50 p-4 rounded-2xl border border-orange-200 space-y-3">
                 <div className="flex items-center space-x-2 text-orange-900 font-bold text-sm">
                   <Palette className="w-4 h-4" />
-                  <h4>Pilihan Tema Preset & Edisi Hari Besar</h4>
+                  <h4>Pilih Tema Suka-Suka (Termasuk Merah Putih & Shopee Orange)</h4>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {PRESET_THEMES.map((preset, idx) => (
@@ -729,29 +657,6 @@ export default function JajanCompactLayout() {
                       <span className="w-3 h-3 rounded-full border shadow-inner shrink-0" style={{ backgroundColor: preset.theme.headerBg }}></span>
                     </button>
                   ))}
-                </div>
-
-                <div className="border-t border-orange-200 pt-3 space-y-3">
-                  <p className="font-bold text-[11px] text-orange-900">Atau Sesuaikan Warna Manual (Color Picker):</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-semibold">Warna Teks Utama</label>
-                      <input type="color" value={editProfile.theme.textColor} onChange={(e) => setEditProfile({ ...editProfile, theme: { ...editProfile.theme, textColor: e.target.value } })} className="w-8 h-8 rounded border cursor-pointer" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-semibold">Background Halaman</label>
-                      <input type="color" value={editProfile.theme.pageBg} onChange={(e) => setEditProfile({ ...editProfile, theme: { ...editProfile.theme, pageBg: e.target.value } })} className="w-8 h-8 rounded border cursor-pointer" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-semibold">Background Header</label>
-                      <input type="color" value={editProfile.theme.headerBg} onChange={(e) => setEditProfile({ ...editProfile, theme: { ...editProfile.theme, headerBg: e.target.value } })} className="w-8 h-8 rounded border cursor-pointer" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="block text-[10px] font-semibold">Tombol / Aksen</label>
-                      <input type="color" value={editProfile.theme.primaryColor} onChange={(e) => setEditProfile({ ...editProfile, theme: { ...editProfile.theme, primaryColor: e.target.value, buttonBg: e.target.value } })} className="w-8 h-8 rounded border cursor-pointer" />
-                    </div>
-                  </div>
-                  <button type="button" onClick={saveProfileAndThemeChanges} className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded-xl shadow mt-2">Simpan Perubahan Tema</button>
                 </div>
               </div>
 
@@ -783,7 +688,7 @@ export default function JajanCompactLayout() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block font-semibold mb-1 text-[10px]">Jumlah Pengikut (Followers)</label>
-                    <input type="text" value={editProfile.followersCount} onChange={(e) => setEditProfile({ ...editProfile, followersCount: e.target.value })} placeholder="Cth: 5.8k atau 10.2k" className="w-full p-2.5 rounded-xl border border-slate-200 bg-white" />
+                    <input type="text" value={editProfile.followersCount} onChange={(e) => setEditProfile({ ...editProfile, followersCount: e.target.value })} placeholder="Cth: 586" className="w-full p-2.5 rounded-xl border border-slate-200 bg-white" />
                   </div>
                   <div>
                     <label className="block font-semibold mb-1 text-[10px]">Jumlah Mengikuti (Following)</label>
@@ -796,7 +701,7 @@ export default function JajanCompactLayout() {
                   <textarea value={editProfile.bio} onChange={(e) => setEditProfile({ ...editProfile, bio: e.target.value })} className="w-full p-2.5 rounded-xl border border-slate-200 bg-white" rows={3} />
                 </div>
 
-                <button onClick={saveProfileAndThemeChanges} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl shadow">Simpan Perubahan Profil & Pengikut</button>
+                <button onClick={saveProfileAndThemeChanges} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl shadow">Simpan Perubahan Profil & Tema</button>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
@@ -818,7 +723,7 @@ export default function JajanCompactLayout() {
                       accept="image/*" 
                       multiple 
                       onChange={handleProductMultiImageUpload} 
-                      className="w-full text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:font-bold file:bg-orange-600 file:text-white text-[11px] cursor-pointer" 
+                      className="w-full text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:font-bold file:bg-red-600 file:text-white text-[11px] cursor-pointer" 
                     />
                     
                     {newProduct.images.length > 0 && (
