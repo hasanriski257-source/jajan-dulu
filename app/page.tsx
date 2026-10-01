@@ -120,6 +120,7 @@ const formatDate = (d: string) => {
 };
 
 const inputCls = "w-full p-3 rounded-xl border border-slate-200 bg-white text-xs text-slate-900";
+const fileCls = "text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-900 file:text-white file:font-bold";
 
 /* ============ APP ============ */
 export default function App() {
@@ -128,6 +129,8 @@ export default function App() {
   const [pin, setPin] = useState("");
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [loaded, setLoaded] = useState(false);   // data asli sudah diambil?
+  const [isOwner, setIsOwner] = useState(false); // perangkat ini ditandai sebagai milik admin?
 
   const [selectedCategory, setSelectedCategory] = useState("Semua");
   const [bannerIdx, setBannerIdx] = useState(0);
@@ -148,6 +151,7 @@ export default function App() {
       const { data } = await r.json();
       if (data) setSite({ ...DEFAULT_SITE, ...data });
     } catch { /* pakai data default */ }
+    finally { setLoaded(true); }
   };
   useEffect(() => {
     load();
@@ -155,6 +159,17 @@ export default function App() {
     return () => clearInterval(i);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdminOpen]);
+
+  // Tombol admin hanya muncul di perangkat yang pernah membuka /?admin
+  useEffect(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get("admin") === "off") localStorage.removeItem("isOwner");
+      else if (p.has("admin")) localStorage.setItem("isOwner", "1");
+      if (p.has("admin")) window.history.replaceState({}, "", window.location.pathname);
+      setIsOwner(localStorage.getItem("isOwner") === "1");
+    } catch { /* abaikan */ }
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -244,6 +259,15 @@ export default function App() {
   };
 
   /* --- tampilan --- */
+  // Tampilkan "Memuat..." dulu supaya data contoh tidak berkedip
+  if (!loaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-orange-50 text-orange-600 text-sm font-bold">
+        Memuat...
+      </div>
+    );
+  }
+
   const view = isAdminOpen ? draft : site; // saat admin terbuka, tema tampil langsung sebagai preview
   const { profile } = view;
   const theme = profile.theme;
@@ -256,13 +280,15 @@ export default function App() {
   return (
     <div className="min-h-screen w-full font-sans pb-24 transition-colors duration-300" style={{ backgroundColor: theme.pageBg, color: theme.textColor }}>
 
-      {/* Tombol admin pojok kanan bawah */}
-      <div className="fixed bottom-5 right-5 z-40">
-        <button onClick={openAdmin} className="bg-slate-900/90 hover:bg-slate-900 text-white px-4 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 text-xs font-bold backdrop-blur border border-slate-700">
-          <Settings className="w-4 h-4" />
-          <span>Admin</span>
-        </button>
-      </div>
+      {/* Tombol admin: hanya terlihat di perangkat pemilik */}
+      {isOwner && (
+        <div className="fixed bottom-5 right-5 z-40">
+          <button onClick={openAdmin} className="bg-slate-900/90 hover:bg-slate-900 text-white px-4 py-2.5 rounded-full shadow-2xl flex items-center space-x-2 text-xs font-bold backdrop-blur border border-slate-700">
+            <Settings className="w-4 h-4" />
+            <span>Admin</span>
+          </button>
+        </div>
+      )}
 
       {/* HEADER */}
       <header className="w-full shadow-md" style={{ backgroundColor: theme.headerBg }}>
@@ -507,7 +533,7 @@ export default function App() {
                 <h4 className="font-bold text-sm">Profil</h4>
                 <div className="flex items-center gap-3">
                   <img src={draft.profile.profileImage} alt="" className="w-14 h-14 rounded-full object-cover bg-slate-200" />
-                  <input type="file" accept="image/*" onChange={(e) => uploadTo(e.target.files?.[0], 300, (u) => setProfileField("profileImage", u))} className="text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-900 file:text-white file:font-bold" />
+                  <input type="file" accept="image/*" onChange={(e) => uploadTo(e.target.files?.[0], 300, (u) => setProfileField("profileImage", u))} className={fileCls} />
                 </div>
                 <input className={inputCls} placeholder="Nama" value={draft.profile.name} onChange={(e) => setProfileField("name", e.target.value)} />
                 <input className={inputCls} placeholder="Handle (@nama)" value={draft.profile.handle} onChange={(e) => setProfileField("handle", e.target.value)} />
@@ -526,7 +552,7 @@ export default function App() {
                 {draft.profile.banners.map((b, i) => (
                   <div key={i} className="p-3 rounded-xl border border-slate-200 bg-white space-y-2">
                     {b.image && <img src={b.image} alt="" className="w-full h-24 object-cover rounded-lg" />}
-                    <input type="file" accept="image/*" onChange={(e) => uploadTo(e.target.files?.[0], 1400, (u) => setBanner(i, { image: u }))} className="text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-900 file:text-white file:font-bold" />
+                    <input type="file" accept="image/*" onChange={(e) => uploadTo(e.target.files?.[0], 1400, (u) => setBanner(i, { image: u }))} className={fileCls} />
                     <input className={inputCls} placeholder="atau tempel link gambar" value={b.image.startsWith("data:") ? "" : b.image} onChange={(e) => setBanner(i, { image: e.target.value })} />
                     <input className={inputCls} placeholder="Judul" value={b.title} onChange={(e) => setBanner(i, { title: e.target.value })} />
                     <input className={inputCls} placeholder="Sub judul" value={b.subtitle} onChange={(e) => setBanner(i, { subtitle: e.target.value })} />
@@ -547,7 +573,7 @@ export default function App() {
                   </div>
                   <input className={inputCls} placeholder="Kategori" value={newProduct.category} onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })} />
                   <textarea className={inputCls} placeholder="Deskripsi" value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} />
-                  <input type="file" accept="image/*" multiple onChange={uploadProductImages} className="w-full text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-900 file:text-white file:font-bold" />
+                  <input type="file" accept="image/*" multiple onChange={uploadProductImages} className={"w-full " + fileCls} />
                   <div className="flex gap-1.5">{newProduct.images.map((im, i) => <img key={i} src={im} alt="" className="w-10 h-10 rounded-lg object-cover" />)}</div>
                   <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl">{editingId ? "Update Produk" : "Tambah ke Daftar"}</button>
                 </form>
@@ -579,7 +605,7 @@ export default function App() {
                   <input className={inputCls} placeholder="Lokasi" value={newSpot.location} onChange={(e) => setNewSpot({ ...newSpot, location: e.target.value })} />
                   <input className={inputCls} placeholder="Deskripsi singkat" value={newSpot.description} onChange={(e) => setNewSpot({ ...newSpot, description: e.target.value })} />
                   <input className={inputCls} placeholder="Link Google Maps" value={newSpot.mapUrl} onChange={(e) => setNewSpot({ ...newSpot, mapUrl: e.target.value })} />
-                  <input type="file" accept="image/*" onChange={(e) => uploadTo(e.target.files?.[0], 600, (u) => setNewSpot((s) => ({ ...s, image: u })))} className="w-full text-[11px] text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-900 file:text-white file:font-bold" />
+                  <input type="file" accept="image/*" onChange={(e) => uploadTo(e.target.files?.[0], 600, (u) => setNewSpot((s) => ({ ...s, image: u })))} className={"w-full " + fileCls} />
                   <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl">Tambah Tempat</button>
                 </form>
                 {draft.hangouts.map((h) => (
