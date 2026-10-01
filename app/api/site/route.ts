@@ -1,3 +1,4 @@
+jajandulu.vercel.app/?admin
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -5,6 +6,7 @@ export const dynamic = "force-dynamic";
 const SB_URL = process.env.SUPABASE_URL!;
 const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_PIN = process.env.ADMIN_PIN!;
+const BUCKET = "produk";
 
 const H = {
   apikey: SB_KEY,
@@ -42,6 +44,27 @@ export async function POST(req: Request) {
 
     if (body.action === "verify") {
       return NextResponse.json({ ok: body.pin === ADMIN_PIN });
+    }
+
+    // Upload foto ke Supabase Storage, kembalikan link publiknya
+    if (body.action === "upload") {
+      if (body.pin !== ADMIN_PIN) return NextResponse.json({ ok: false, error: "PIN salah" }, { status: 401 });
+      const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(String(body.image ?? ""));
+      if (!m) return NextResponse.json({ ok: false, error: "Format foto tidak valid" }, { status: 400 });
+
+      const mime = m[1];
+      const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+      const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+      const bytes = new Uint8Array(Buffer.from(m[2], "base64"));
+
+      const r = await fetch(`${SB_URL}/storage/v1/object/${BUCKET}/${path}`, {
+        method: "POST",
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": mime },
+        body: bytes,
+      });
+      if (!r.ok) return NextResponse.json({ ok: false, error: "Upload gagal" }, { status: 500 });
+
+      return NextResponse.json({ ok: true, url: `${SB_URL}/storage/v1/object/public/${BUCKET}/${path}` });
     }
 
     if (body.action === "save") {
