@@ -267,41 +267,6 @@ const uploadProductImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
   setNewProduct(EMPTY_PRODUCT);
 };
 
-        // Buat nama file unik berdasarkan waktu saat ini
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.jpg`;
-
-        // Proses upload file ke bucket Supabase bernama 'produk'
-        const { error: uploadError } = await supabase.storage
-          .from("produk")
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        // Ambil Public URL dari foto yang baru saja di-upload
-        const { data: publicUrlData } = supabase.storage
-          .from("produk")
-          .getPublicUrl(fileName);
-
-        if (publicUrlData?.publicUrl) {
-          uploadedImageUrls.push(publicUrlData.publicUrl);
-        }
-      }
-
-      // 3. Simpan data produk beserta URL gambar ke state/database utama
-      setDraft((d) => ({
-        ...d,
-        products: editingId
-          ? d.products.map((p) => (p.id === editingId ? { ...p, ...newProduct, images: uploadedImageUrls } : p))
-          : [{ id: Date.now().toString(), ...newProduct, images: uploadedImageUrls }, ...d.products],
-      }));
-
-      alert("Produk dan foto berhasil disimpan ke Supabase!");
-
-    } catch (error: any) {
-      console.error("Gagal upload:", error);
-      alert("Gagal menyimpan: " + (error.message || "Terjadi kesalahan"));
-    }
-  };
   const addSpot = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSpot.name) return;
