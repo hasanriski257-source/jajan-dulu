@@ -227,30 +227,81 @@ export default function App() {
   const setThemeField = (k: keyof CustomTheme, v: string) =>
     setProfileField("theme", { ...draft.profile.theme, [k]: v });
 
-  const uploadTo = async (file: File | undefined, maxW: number, cb: (url: string) => void) => {
-    if (file) cb(await compressImage(file, maxW));
-  };
+  const uploadImage = async (file: File, maxW: number): Promise<string> => {
+  const dataUrl = await compressImage(file, maxW);
+  const r = await fetch("/api/site", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "upload", pin, image: dataUrl }),
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "Upload gagal");
+  return j.url as string;
+};
 
-  const uploadProductImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []).slice(0, 6);
-    if (!files.length) return;
-    const imgs = await Promise.all(files.map((f) => compressImage(f, 600)));
+const uploadTo = async (file: File | undefined, maxW: number, cb: (url: string) => void) => {
+  if (!file) return;
+  try { cb(await uploadImage(file, maxW)); }
+  catch { alert("Upload foto gagal. Coba foto lain."); }
+};
+
+const uploadProductImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const files = Array.from(e.target.files ?? []).slice(0, 6);
+  if (!files.length) return;
+  try {
+    const imgs = await Promise.all(files.map((f) => uploadImage(f, 600)));
     setNewProduct((p) => ({ ...p, images: imgs }));
-  };
+  } catch { alert("Upload foto gagal. Coba foto lain."); }
+};
 
   const saveProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProduct.title || !newProduct.affiliateUrl) return;
-    setDraft((d) => ({
-      ...d,
-      products: editingId
-        ? d.products.map((p) => (p.id === editingId ? { ...p, ...newProduct } : p))
-        : [{ id: Date.now().toString(), ...newProduct }, ...d.products],
-    }));
-    setEditingId(null);
-    setNewProduct(EMPTY_PRODUCT);
-  };
+  e.preventDefault();
+  if (!newProduct.title || !newProduct.affiliateUrl) return;
+  setDraft((d) => ({
+    ...d,
+    products: editingId
+      ? d.products.map((p) => (p.id === editingId ? { ...p, ...newProduct } : p))
+      : [{ id: Date.now().toString(), ...newProduct }, ...d.products],
+  }));
+  setEditingId(null);
+  setNewProduct(EMPTY_PRODUCT);
+};
 
+        // Buat nama file unik berdasarkan waktu saat ini
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.jpg`;
+
+        // Proses upload file ke bucket Supabase bernama 'produk'
+        const { error: uploadError } = await supabase.storage
+          .from("produk")
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        // Ambil Public URL dari foto yang baru saja di-upload
+        const { data: publicUrlData } = supabase.storage
+          .from("produk")
+          .getPublicUrl(fileName);
+
+        if (publicUrlData?.publicUrl) {
+          uploadedImageUrls.push(publicUrlData.publicUrl);
+        }
+      }
+
+      // 3. Simpan data produk beserta URL gambar ke state/database utama
+      setDraft((d) => ({
+        ...d,
+        products: editingId
+          ? d.products.map((p) => (p.id === editingId ? { ...p, ...newProduct, images: uploadedImageUrls } : p))
+          : [{ id: Date.now().toString(), ...newProduct, images: uploadedImageUrls }, ...d.products],
+      }));
+
+      alert("Produk dan foto berhasil disimpan ke Supabase!");
+
+    } catch (error: any) {
+      console.error("Gagal upload:", error);
+      alert("Gagal menyimpan: " + (error.message || "Terjadi kesalahan"));
+    }
+  };
   const addSpot = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSpot.name) return;
