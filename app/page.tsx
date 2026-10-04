@@ -144,6 +144,12 @@ export default function App() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newSpot, setNewSpot] = useState(EMPTY_SPOT);
 
+  // === TAMBAHAN: state impor dari link ===
+  const [importText, setImportText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  // === AKHIR TAMBAHAN ===
+
   // Ambil data dari server (dan cek ulang tiap 60 detik)
   const load = async () => {
     try {
@@ -266,6 +272,44 @@ const uploadProductImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
   setEditingId(null);
   setNewProduct(EMPTY_PRODUCT);
 };
+
+  // === TAMBAHAN: fungsi impor banyak link sekaligus ===
+  const importLinks = async () => {
+    const urls = Array.from(new Set(importText.split(/\s+/).map((s) => s.trim()).filter((s) => /^https?:\/\//i.test(s))));
+    if (!urls.length) { setImportMsg("Belum ada link yang valid. Tempel link yang diawali https://"); return; }
+    setImporting(true);
+    let done = 0;
+    let filled = 0;
+    try {
+      for (let i = 0; i < urls.length; i += 5) {
+        const batch = urls.slice(i, i + 5);
+        setImportMsg(`Memproses ${Math.min(i + 5, urls.length)} dari ${urls.length} link...`);
+        const r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin, urls: batch }) });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Gagal");
+        const items = j.items as { url: string; ok: boolean; title: string; description: string; image: string; price: string }[];
+        const created: ProductItem[] = items.map((it, k) => ({
+          id: Date.now().toString() + "-" + (i + k),
+          title: it.title || "Produk baru (isi judul)",
+          description: it.description || "",
+          price: it.price || "",
+          originalPrice: "",
+          images: [it.image || EMPTY_PRODUCT.images[0]],
+          affiliateUrl: it.url,
+          category: "Kuliner",
+        }));
+        filled += items.filter((it) => it.ok).length;
+        done += items.length;
+        setDraft((d) => ({ ...d, products: [...created, ...d.products] }));
+      }
+      setImportMsg(`Selesai: ${done} produk masuk daftar (${filled} berhasil terisi otomatis, ${done - filled} perlu diisi manual). Cek dulu, lalu klik Simpan & Publikasikan.`);
+      setImportText("");
+    } catch {
+      setImportMsg(`Berhenti di tengah jalan. ${done} produk sudah masuk daftar. Coba lagi untuk sisanya.`);
+    }
+    setImporting(false);
+  };
+  // === AKHIR TAMBAHAN ===
 
   const addSpot = (e: React.FormEvent) => {
     e.preventDefault();
@@ -593,6 +637,16 @@ const uploadProductImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
                   <div className="flex gap-1.5">{newProduct.images.map((im, i) => <img key={i} src={im} alt="" className="w-10 h-10 rounded-lg object-cover" />)}</div>
                   <button type="submit" className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl">{editingId ? "Update Produk" : "Tambah ke Daftar"}</button>
                 </form>
+
+                {/* === TAMBAHAN: Impor dari link === */}
+                <div className="p-3 rounded-xl border border-orange-200 bg-orange-50 space-y-2">
+                  <h4 className="font-bold text-sm text-orange-900">Impor Banyak Produk dari Link</h4>
+                  <p className="text-[11px] text-orange-800">Tempel link affiliate Shopee, satu per baris. Judul, foto, dan deskripsi diisi otomatis kalau terbaca. Yang kosong bisa diedit setelahnya.</p>
+                  <textarea className={inputCls} rows={5} placeholder={"https://s.shopee.co.id/xxxx\nhttps://s.shopee.co.id/yyyy"} value={importText} onChange={(e) => setImportText(e.target.value)} />
+                  <button type="button" onClick={importLinks} disabled={importing} className="w-full bg-orange-600 disabled:opacity-60 text-white font-bold py-3 rounded-xl">{importing ? "Memproses..." : "Impor dari Link"}</button>
+                  {importMsg && <p className="text-[11px] font-semibold text-orange-900">{importMsg}</p>}
+                </div>
+                {/* === AKHIR TAMBAHAN === */}
 
                 <div className="space-y-2 pt-2">
                   {draft.products.map((p) => (
