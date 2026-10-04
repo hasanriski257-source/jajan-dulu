@@ -1,93 +1,89 @@
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
 
+const SB_URL = process.env.SUPABASE_URL!;
+const SB_KEY = process.env.SUPABASE_SERVICE_KEY!;
 const ADMIN_PIN = process.env.ADMIN_PIN!;
+const BUCKET = "produk";
 
-// Hanya link Shopee yang boleh dibuka (mencegah server dipakai membuka alamat lain)
-const ALLOWED_HOST = /(^|\.)(shopee\.[a-z.]+|shope\.ee|shp\.ee)$/i;
-
-type Item = {
-  url: string;
-  ok: boolean;
-  title: string;
-  description: string;
-  image: string;
-  price: string;
+const H = {
+  apikey: SB_KEY,
+  Authorization: `Bearer ${SB_KEY}`,
+  "Content-Type": "application/json",
 };
 
-const decode = (s: string) =>
-  s
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .trim();
-
-function meta(html: string, key: string): string {
-  const a = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*content=["']([^"']*)["']`, "i").exec(html);
-  if (a) return decode(a[1]);
-  const b = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${key}["']`, "i").exec(html);
-  return b ? decode(b[1]) : "";
+async function read() {
+  const r = await fetch(`${SB_URL}/rest/v1/site_data?id=eq.main&select=data`, { headers: H, cache: "no-store" });
+  if (!r.ok) throw new Error("read failed");
+  const rows = await r.json();
+  return rows[0]?.data ?? null;
 }
 
-const rupiah = (n: number) => "Rp " + Math.round(n).toLocaleString("id-ID");
+async function write(data: unknown) {
+  const r = await fetch(`${SB_URL}/rest/v1/site_data`, {
+    method: "POST",
+    headers: { ...H, Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({ id: "main", data }),
+  });
+  if (!r.ok) throw new Error("write failed");
+}
 
-async function scrape(url: string): Promise<Item> {
-  const empty: Item = { url, ok: false, title: "", description: "", image: "", price: "" };
+export async function GET() {
   try {
-    const u = new URL(url);
-    if (!/^https?:$/.test(u.protocol) || !ALLOWED_HOST.test(u.hostname)) return empty;
-
-    const r = await fetch(url, {
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
-        "Accept-Language": "id-ID,id;q=0.9",
-      },
-    });
-    if (!r.ok) return empty;
-    const html = (await r.text()).slice(0, 600000);
-
-    let title = meta(html, "og:title") || meta(html, "twitter:title");
-    if (!title) {
-      const t = /<title[^>]*>([^<]*)<\/title>/i.exec(html);
-      title = t ? decode(t[1]) : "";
-    }
-    title = title.replace(/\s*\|\s*Shopee.*$/i, "").replace(/^Jual\s+/i, "").trim();
-
-    const description = meta(html, "og:description") || meta(html, "description");
-    const image = meta(html, "og:image") || meta(html, "twitter:image");
-
-    let price = "";
-    const amount = meta(html, "product:price:amount") || meta(html, "og:price:amount");
-    const n = Number(amount.replace(/[^0-9.]/g, ""));
-    if (amount && n > 0) price = rupiah(n);
-
-    const ok = !!(title || image);
-    return { url, ok, title, description: description.slice(0, 300), image, price };
+    return NextResponse.json({ data: await read() });
   } catch {
-    return empty;
+    return NextResponse.json({ data: null, error: true }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    if (body.pin !== ADMIN_PIN) {
-      return NextResponse.json({ ok: false, error: "PIN salah" }, { status: 401 });
-    }
-    const urls: string[] = (Array.isArray(body.urls) ? body.urls : [])
-      .map((x: unknown) => String(x).trim())
-      .filter(Boolean)
-      .slice(0, 10);
 
-    const items = await Promise.all(urls.map((u) => scrape(u)));
-    return NextResponse.json({ ok: true, items });
+    if (body.action === "verify") {
+      return NextResponse.json({ ok: body.pin === ADMIN_PIN });
+    }
+
+    // Upload foto ke Supabase Storage, kembalikan link publiknya
+    if (body.action === "upload") {
+      if (body.pin !== ADMIN_PIN) return NextResponse.json({ ok: false, error: "PIN salah" }, { status: 401 });
+      const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(String(body.image ?? ""));
+      if (!m) return NextResponse.json({ ok: false, error: "Format foto tidak valid" }, { status: 400 });
+
+      const mime = m[1];
+      const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+      const path = Date.now() + "-" + Math.floor(Math.random() * 1000000) + "." + ext;
+      const bytes = new Uint8Array(Buffer.from(m[2], "base64"));
+
+      const r = await fetch(SB_URL + "/storage/v1/object/" + BUCKET + "/" + path, {
+        method: "POST",
+        headers: { apikey: SB_KEY, Authorization: "Bearer " + SB_KEY, "Content-Type": mime },
+        body: bytes,
+      });
+      if (!r.ok) return NextResponse.json({ ok: false, error: "Upload gagal" }, { status: 500 });
+
+      return NextResponse.json({ ok: true, url: SB_URL + "/storage/v1/object/public/" + BUCKET + "/" + path });
+    }
+
+    if (body.action === "save") {
+      if (body.pin !== ADMIN_PIN) return NextResponse.json({ ok: false, error: "PIN salah" }, { status: 401 });
+      const current = await read();
+      await write({ ...body.data, requests: current?.requests ?? body.data.requests ?? [] });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "request") {
+      const message = String(body.message ?? "").trim().slice(0, 200);
+      const name = String(body.name ?? "").trim().slice(0, 40) || "Anonim";
+      if (!message) return NextResponse.json({ ok: false }, { status: 400 });
+      const current = (await read()) ?? {};
+      const item = { id: Date.now().toString(), name, message, date: new Date().toISOString() };
+      await write({ ...current, requests: [item, ...(current.requests ?? [])].slice(0, 30) });
+      return NextResponse.json({ ok: true, item });
+    }
+
+    return NextResponse.json({ ok: false }, { status: 400 });
   } catch {
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   }
